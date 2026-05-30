@@ -1,0 +1,7 @@
+{
+  "name": "sphoono-skills",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Custom agent skills for maintaining an Obsidian vault with daily notes and LLM Wiki systems.",
+  "keywords": ["skills", "obsidian", "agent-skills", "opencode"]
+}
