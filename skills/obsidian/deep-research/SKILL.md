@@ -1,28 +1,81 @@
 ---
 name: deep-research
-description: Full two-level research workflow for the LLM Wiki. Given a category and topic, create infrastructure, research both levels, build all page types (concepts, entities, sources, comparisons), write cross-references, and update the index and log. MCP-portable version of categorical-research.
+description: Self-triggering deep research for the LLM Wiki. Activates when the agent finds insufficient information in the Obsidian vault. Given a category and topic, creates infrastructure, researches both levels, builds all page types (concepts, entities, sources, comparisons), writes cross-references, and updates the index and log. 
 ---
 
 # Deep Research
 
-Full two-level research for the LLM Wiki: given a broad `{{category}}` and a specific `{{topic}}`, researches both, creates infrastructure if needed, builds all page types (concept, entity, source summaries, comparisons), writes cross-references across the knowledge graph, and updates the master index and operation log.
+Full two-level research for the LLM Wiki: given a broad `{{category}}` and a specific `{{topic}}`, researches both, creates infrastructure if needed, builds all page types (concept, entity, source summaries, comparisons), writes cross-references across the knowledge graph, and updates the master index and operation log. This skill is **self-triggering** — it activates automatically when the agent detects a knowledge gap in the Obsidian vault during task execution, not only when explicitly called.
 
-For lighter single-topic research, see `quick-research`. For ingesting a single URL, see `source-ingest`.
+For ingesting a single URL, see `source-ingest`.
 
-## When to Use
+## Trigger — Knowledge Gap Detection
 
-- **New domain research:** "research Kubernetes, specifically k3s"
-- **Deep enrichment:** "research containerd covering runc"
-- **Category + topic pairs:** any request specifying both a broad category and a specific subject within it
+This skill must be used when, during any task, the agent searches the LLM Wiki in the Obsidian vault and finds insufficient information about a concept, tool, technology, or domain. It is the primary research workflow for filling gaps between what the vault knows and what the agent needs.
+
+### Detection Mechanism
+
+When the agent requires information to complete a task:
+
+1. **Consult the LLM Wiki first** — Search the index (`LLM-Wiki/wiki/index.md`) and relevant topic areas using `obsidian_search_notes` with the target topic as query; also check `obsidian_list_directory` on `LLM-Wiki/wiki/concepts/` for relevant topic directories
+2. **Evaluate coverage** — Assess whether existing wiki pages adequately cover what you need: do they answer the question at hand? Are they detailed enough? Are sources recent?
+3. **Trigger conditions** — If any of the following are true, proceed with the deep research workflow:
+
+   | Condition | Description | Action |
+   |---|---|---|
+   | **No coverage** | The topic does not exist anywhere in the wiki | Full research: create category infrastructure + topic pages |
+   | **Insufficient depth** | The topic exists but lacks architecture details, key concepts, or specific information needed | Enrichment mode: add sources, expand concept pages, create entity/comparison pages |
+   | **Stale content** | Existing pages are marked with low confidence, draft status, or lack recent sources | Refresh: re-research, add up-to-date sources, update confidence |
+   | **Connected topic** | You find related pages that hint at a concept but do not document it directly | Bridging research: create the missing topic and cross-link |
+
+### Self-Triggering Flow
+
+```
+Agent encounters knowledge gap during task execution
+    ↓
+Agent searches LLM Wiki (obsidian_search_notes, obsidian_read_note on index.md)
+    ↓
+┌─ Coverage exists and is sufficient? ──→ Continue task (no research needed)
+└─ Coverage insufficient (one of the 4 conditions above)?
+         ↓
+    Extract {{category}} and {{topic}} from the search context
+         ↓
+    Invoke this deep-research workflow from Step 1
+         ↓
+    Return results; agent resumes original task with enriched knowledge
+```
+
+### When NOT to Trigger
+
+- The wiki already has comprehensive, up-to-date coverage of the topic
+- The information is simple enough to answer from the agent's general knowledge (e.g., common programming language syntax)
+- The user explicitly instructs you not to research the topic
+- A single URL would provide the answer — use `source-ingest` instead
+- The question is about the user's own codebase or project (not a general concept)
+
+### Example Trigger Scenarios
+
+| Agent Task | Wiki Search Result | Trigger? | Research Action |
+|---|---|---|---|
+| "Explain how k3s differs from k8s" | No results for k3s | ✅ No coverage | Create `kubernetes/k3s` topic |
+| "What is CRI-O and how does it relate to containerd?" | Concept page for containerd exists but no CRI-O page | ✅ Connected topic | Create `kubernetes/cri-o` with cross-links to containerd |
+| "Write a Terraform module that uses the Kubernetes provider" | Kubernetes concept page is thorough, Terraform page exists | ❌ Sufficient | Continue task |
+| "How does runc work internally?" | containerd topic exists but runc is only mentioned in passing | ✅ Insufficient depth | Create `containerd/runc` enrichment |
+| "What's new in Docker Compose v2?" | Docker Compose page dates from 2023 with confidence:low | ✅ Stale content | Refresh docker-compose topic |
 
 ## Inputs
 
-| Input | Description | Example |
-|---|---|---|
-| `{{category}}` | Broad domain or topic area | `kubernetes`, `containerd`, `gitops`, `docker` |
-| `{{topic}}` | Specific subject within the category | `k3s`, `runc`, `argocd`, `docker-compose` |
+These are **not provided explicitly by the user.** They are derived automatically from the context of the knowledge gap detected during the agent's trigger flow.
 
-If the user provides only one input, ask for the missing one.
+| Input | Description | How Derived |
+|---|---|---|
+| `{{category}}` | Broad domain or topic area (e.g., `kubernetes`, `containerd`, `gitops`) | Extracted from the search query that returned empty/insufficient results. If the gap concerns a sub-topic, the parent concept determines the category |
+| `{{topic}}` | Specific subject within the category (e.g., `k3s`, `runc`, `argocd`) | Extracted from the specific entity, tool, or concept the agent was looking up |
+
+If only one can be confidently inferred, derive the other:
+- Known category + specific gap → the gap is the topic
+- Specific tool/concept with clear parent → the parent is the category
+- If ambiguous, make a reasonable best-guess and note the assumption in the research report
 
 ## Workflow
 
