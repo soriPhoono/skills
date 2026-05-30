@@ -5,16 +5,56 @@ description: Append structured worklog entries to today's daily note during an a
 
 # Session Logger
 
-Appends structured entries to today's daily note `## Worklog` section as work progresses. Handles creation of missing daily notes from template, per-project worklog subsections, task checklists, narrative write-ups, and Files Changed tables.
+Appends structured entries to today's daily note `## Worklog` section as work progresses. Handles creation of missing daily notes from template, per-project worklog subsections, task checklists, narrative write-ups, Files Changed tables, **and cross-project todo notifications (pings)**.
 
 ## When to Use
 
 - **Starting work:** "log that I'm working on X"
 - **During a session:** "add a task", "I finished Y", "mark Z as done"
 - **After making changes:** "I changed these files", "update the worklog"
+- **Cross-project notification:** "add a todo for Project B about updating the deployment config"
 - **End of session:** "log what I did today", "close out my session"
 
 This skill is designed to be called **repeatedly** during a work session — each call appends to the growing worklog.
+
+---
+
+## Cross-Project Todo Notifications (Pings)
+
+Projects often depend on each other. Work in one project can create work for another. For example, a change in Project A's configuration may require an update in Project B's deployment pipeline.
+
+**Mechanism:** Because all daily notes live in the shared Obsidian vault, any agent can place a todo item under *any* project's section in today's daily note. This acts as a passive notification — the target project's agent will discover it at session start when it scans the daily note.
+
+**The notification lifecycle:**
+
+```
+Agent working on Project A               Agent working on Project B
+─────────────────────────                 ──────────────────────────
+1. Realises Project B needs a change
+2. Calls session-logger:
+   "add a todo for Project B:
+    update the deployment config"
+                                ──→   Daily/2026-05-30.md:
+                                       ### Project: Project B
+                                       #### Tasks
+                                       - [ ] 📩 [from:
+                                             Project A] update
+                                             deployment config 📅 2026-05-30
+                                       #### Task: [Ping from Project A]
+                                       ...
+                                                      
+3. Next session start, Project B agent
+   searches daily note for its project
+   section, finds the 📩 ping        ←── reads and acts on it
+```
+
+### Repo-to-Project Mapping
+
+By default, when an agent is running inside a repository directory, its "current project" is the name of that repository directory's corresponding vault project. The mapping between repository paths and vault project names is defined by the user's environment — typically in the workspace root `AGENTS.md`, the user's opencode config, or a `Repo-to-Project` convention document in the vault.
+
+If no mapping is configured, the agent should ask the user for the project name explicitly.
+
+---
 
 ## Workflow
 
@@ -38,25 +78,39 @@ Parse the user's request to extract:
 
 | Input | Description | Example |
 |---|---|---|
-| `{{project}}` | Project name — should match a kanban file in `Projects/` | `guenivir`, `llm-wiki`, `obsidian-vault-tooling` |
-| `{{task}}` | Description of what was done | `Deploy k0s control plane to bare metal` |
+| `{{project}}` | Current project — the one you're actively working on | `project-a`, `project-b`, `my-project` |
+| `{{target_project}}` | **Optional.** Target project for cross-project notifications. If set and **different** from `{{project}}`, the entry goes under the target's section, not the current project's. Defaults to `{{project}}` (same-project entry). | `project-b`, `project-a` |
+| `{{task}}` | Description of what was done or what needs to be done | `Deploy control plane to production` |
 | `{{status}}` | Task state | `in-progress`, `done`, `blocked` |
-| `{{files}}` | Optional list of changed files with summaries | `nixos/hosts/guenivir/configuration.nix — added k0s service` |
-| `{{details}}` | Optional free-form narrative | `Troubleshoot etcd cluster join...` |
+| `{{files}}` | Optional list of changed files with summaries | `repo/path/to/config.yml — added service definition` |
+| `{{details}}` | Optional free-form narrative | `Troubleshoot cluster join timeout...` |
 
 If the user provides a rich description, extract these fields from it. If any are missing, ask.
+
+**Determining `{{project}}` from context:**
+- If running in a known repo directory (see Repo-to-Project Mapping), use the matching project
+- If the user says "working on X" or "in the X repo", use X as the project
+- If ambiguous, ask the user
+
+**Determining `{{target_project}}`:**
+- If the user says "add a todo for \<project\>" or "notify \<project\> about X" or "scope this to \<project\>", set `target_project` to that project
+- If `project` is explicitly provided but no target_project is mentioned, `target_project` defaults to `project`
+- If the user says "add a task for the \<project\> repo" or "the \<project\> project needs X", treat that as a cross-project notification
 
 **Status mapping:**
 - `done`, `completed`, `finished`, `✅` → completed task (`[x]` with `✅ YYYY-MM-DD`)
 - `blocked`, `stuck`, `waiting` → pending task with note (`[ ]` with `🔒`)
 - `in-progress`, `wip`, `working`, `started` → pending task (`[ ]` with `📅 YYYY-MM-DD`)
 - `cancelled`, `wontfix` → skip (don't add to log)
+- For **cross-project notifications**, the status should always default to `in-progress` (pending) unless explicitly stated otherwise — the notification represents a new pending item for the target project.
 
 ### Step 4: Locate or Create the Project Subsection
 
+**Important:** Use `{{target_project}}` (not `{{project}}`) to locate the subsection. For same-project entries these are identical. For cross-project notifications, the entry gets placed under the **target** project's section.
+
 Read the current note and find the `## Worklog` section. Inside it:
 
-1. **Search for `### Project: {{project}}`** — case-insensitive, trimmed
+1. **Search for `### Project: {{target_project}}`** — case-insensitive, trimmed
 2. **If found:** Note its position in the document for appending
 3. **If not found:** We'll add it at the end of the `## Worklog` section (before any trailing content)
 
@@ -88,17 +142,51 @@ Find the existing task checklist item and patch it:
 
 Append a row to the existing `#### Files Changed` table in the current task's subsection.
 
+#### Scenario D: Cross-project todo notification
+
+When `{{target_project}}` differs from `{{project}}` (i.e., you're scoping a todo for another project):
+
+The entry goes under `### Project: {{target_project}}`. The format signals that this is an incoming notification, not a self-assigned task:
+
+```markdown
+#### Task: [Ping from {{project}}] {{task}}
+
+**Requested by:** `{{project}}` agent · 📅 {{today's date}}
+**Context:** {{details}}
+
+> This item was created by the {{project}} work session. It appears here
+> as a cross-project notification because it requires action from
+> {{target_project}}.
+```
+
+**Checklist item format** (under `#### Tasks` in the target project section):
+
+```markdown
+- [ ] 📩 [from: {{project}}] {{task}} 📅 {{today's date}}
+```
+
+The `📩` icon is the convention for "this is an incoming notification from another project." It distinguishes cross-project pings from self-assigned tasks.
+
+**No Files Changed table** is added for cross-project notifications (no files were changed in the target project during this session).
+
+**Kanban link:** Use the **target** project's kanban:
+```markdown
+📋 [[Projects/{{target_project-kebab}}|{{target_project}} Kanban]]
+```
+
 ### Step 6: Insert the Entry
 
 Use `obsidian_patch_note` to surgically insert content:
 
 **Case: Project subsection exists**
-1. Find the last `####` heading under the project subsection
+1. Find the last `####` heading under the target project subsection
 2. Insert after it using `oldString` = last heading line → `newString` = last heading + new content
 
 **Case: Project subsection does not exist**
 1. Find the end of `## Worklog` (the next `##` heading or EOF)
-2. Insert at that point:
+2. Insert at that point using the full section template:
+
+**For same-project entries:**
    ```markdown
    ### Project: {{project}}
 
@@ -116,12 +204,35 @@ Use `obsidian_patch_note` to surgically insert content:
    |---|---|
    | `path/to/file` | Description of changes |
 
-   📋 [[Projects/{{project-kebab}}.kanban|{{project}} Kanban]]
+   📋 [[Projects/{{project-kebab}}|{{project}} Kanban]]
+   ```
+
+**For cross-project notifications:**
+   ```markdown
+   ### Project: {{target_project}}
+
+   #### Tasks
+
+   - [ ] 📩 [from: {{project}}] {{task}} 📅 {{today's date}}
+
+   #### Task: [Ping from {{project}}] {{task}}
+
+   **Requested by:** `{{project}}` agent · 📅 {{today's date}}
+   **Context:** {{details}}
+
+   > This item was created by the {{project}} work session. It appears here
+   > as a cross-project notification because it requires action from
+   > {{target_project}}.
+
+   📋 [[Projects/{{target_project-kebab}}|{{target_project}} Kanban]]
    ```
 
 ### Step 7: Update Summary
 
-If this is the first worklog entry of the day, also update the `## Summary` section at the top of the note. Patch the existing summary line to include this project:
+If this is the first worklog entry of the day, also update the `## Summary` section at the top of the note.
+
+**For same-project entries:**
+Patch the existing summary line to include this project:
 
 **Before:**
 ```
@@ -137,20 +248,93 @@ If this is the first worklog entry of the day, also update the `## Summary` sect
 Working on {{project}}: {{task}}
 ```
 
-If a summary already exists, append the new project/task to it.
+**For cross-project notifications:**
+Update the summary to note both the current project and the cross-project ping:
+
+**After:**
+```
+## Summary
+
+Working on {{project}}: {{task}} · Pending notification for {{target_project}}: {{task}}
+```
+
+If a summary already exists, append to it using the same pattern.
 
 ### Step 8: Confirm
 
 Present a summary of what was logged:
 
+**Same-project entry:**
 ```
 Logged to Daily/2026-05-30.md:
 
-### Project: guenivir
-- [x] Deploy k0s control plane ✅ 2026-05-30
+### Project: Project A
+- [x] Deploy control plane to production ✅ 2026-05-30
 
-## Summary updated: "Working on guenivir: deploy k0s control plane"
+## Summary updated: "Working on Project A: deploy control plane to production"
 ```
+
+**Cross-project notification:**
+```
+Logged cross-project notification to Daily/2026-05-30.md:
+
+### Project: Project B  ← target project section
+- [ ] 📩 [from: Project A] Update deployment config 📅 2026-05-30
+
+## Summary updated: "Working on Project A: ... · Pending notification for Project B: ..."
+
+➡️  Project B's agent will discover this item when it scans the daily note.
+```
+
+## Discovering Cross-Project Notifications (Agent Instructions)
+
+This section is for **any agent reading the daily note at session start** to discover work items that were scoped for their project by other projects' agents.
+
+### Protocol: Session Start Scan
+
+When beginning work on a project, always scan today's daily note for items directed at you:
+
+1. **Open today's note** — `obsidian_read_note` at `Daily/YYYY-MM-DD.md`
+2. **Find your project's section** — look for `### Project: <YourProject>`
+3. **Check for `📩` items** — under `#### Tasks`, any checklist item starting with `📩 [from: ...]` is a cross-project notification
+4. **Read the task body** — the `#### Task: [Ping from X] ...` subsection has full context
+
+### Example Scan
+
+If an agent working on Project B scans the daily note and finds:
+
+```markdown
+### Project: Project B
+
+#### Tasks
+
+- [ ] 📩 [from: Project A] Update deployment config 📅 2026-05-30
+
+#### Task: [Ping from Project A] Update deployment config
+
+**Requested by:** `Project A` agent · 📅 2026-05-30
+**Context:** The base infrastructure now requires an updated
+deployment pipeline to match the new version.
+```
+
+The agent should:
+1. Note the pending item as actionable work
+2. Present it to the user as part of their session start summary
+3. Optionally move it to the In Progress column on the kanban board
+4. Track it in the worklog when work begins
+
+### Acknowledging a Cross-Project Notification
+
+When a cross-project ping has been picked up and acted upon, mark it in the daily note:
+
+1. Change task status: `[ ]` → `[x]` with `✅ YYYY-MM-DD`
+2. Optionally add a follow-up note:
+   ```markdown
+   **Acknowledged by:** `Project B` agent · ✅ 2026-05-30
+   ```
+3. When the originating agent scans the daily note in a future session, they'll see the completion and know the notification was handled.
+
+---
 
 ## Format Reference
 
@@ -159,8 +343,10 @@ All output follows the format defined in `Daily/AGENTS.md`. Key rules:
 - `#### Tasks` section uses Tasks plugin format: `- [ ] task 📅 YYYY-MM-DD` or `- [x] task ✅ YYYY-MM-DD`
 - `#### Task: <name>` subsections contain narrative write-ups
 - `#### Files Changed` tables have `| File | Summary |` header with paths in backticks
-- `📋 [[Projects/<name>.kanban|<name> Kanban]]` goes at the END of each project section
+- `📋 [[Projects/<name>|<name> Kanban]]` goes at the END of each project section
 - Project names must match kanban board filenames in `Projects/`
+- Cross-project notifications use the `📩` prefix in the `#### Tasks` checklist
+- Cross-project notification `#### Task:` headings use the format `[Ping from <source>] <task>`
 
 ## Edge Cases
 
@@ -170,4 +356,10 @@ All output follows the format defined in `Daily/AGENTS.md`. Key rules:
 - **No files changed** → skip the Files Changed table entirely
 - **User wants to log without a specific project** → use project name `General` (no kanban link)
 - **Daily note has unexpected format** → append gracefully, don't break existing content
+- **Cross-project notification to a project with no section yet** → create the section under `## Worklog` (same as creating a new project section, but with the notification format)
+- **Cross-project notification to a project that already has a section** → append under the existing section, after the last `####` heading
+- **Multiple cross-project notifications in one session** → each goes under the appropriate target section; if the same target receives multiple pings, all are grouped under its existing section
 - **User says "that's all for today"** → optionally suggest running `vault-git-sync`
+- **Cross-project notification for a project that doesn't have a kanban board yet** → skip the `📋` kanban link and add a note: "Create kanban board at `Projects/<Project>.md`"
+- **Acknowledging a cross-project notification from the target side** → update the checklist item from `[ ]` to `[x]` with `✅ YYYY-MM-DD`; add `**Acknowledged by:**` line to the task body
+- **Ambiguous project name** → ask the user to clarify which vault project they mean; check the workspace AGENTS.md or vault conventions for the project-to-repo mapping
