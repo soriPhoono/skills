@@ -57,4 +57,4 @@ npx skills add sphoono/skills
 
 ## License
 
-MIT
+GNU General Public License v3.0

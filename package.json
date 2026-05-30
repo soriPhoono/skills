@@ -3,5 +3,6 @@
   "private": true,
   "version": "1.0.0",
   "description": "Custom agent skills for maintaining an Obsidian vault with daily notes and LLM Wiki systems.",
+  "license": "GPL-3.0-only",
   "keywords": ["skills", "obsidian", "agent-skills", "opencode"]
 }
