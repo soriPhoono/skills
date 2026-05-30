@@ -9,7 +9,10 @@ Built for use with the [Agent Skills](https://agentskills.io) ecosystem — inst
 All skills reside under `skills/obsidian/` — one level deep for the CLI's flat discovery.
 
 | Skill | Description |
-|---|---|
+|---|---|---|
+| [`quick-research`](skills/obsidian/quick-research/SKILL.md) | Lightweight single-topic research: search web, create raw bookmarks, write source summary + concept page. |
+| [`source-ingest`](skills/obsidian/source-ingest/SKILL.md) | Ingest a single URL: fetch content, create raw bookmark, write source summary, cross-link to existing pages. |
+| [`deep-research`](skills/obsidian/deep-research/SKILL.md) | Full two-level research (category + topic): create infrastructure, research both levels, build all page types, cross-reference, update index and log. |
 | [`session-logger`](skills/obsidian/session-logger/SKILL.md) | Append structured worklog entries to today's daily note during a work session — project, tasks, files changed, status. |
 | [`daily-note-manager`](skills/obsidian/daily-note-manager/SKILL.md) | Create today's daily note from template, review yesterday's for completeness, validate section ordering. |
 | [`frontmatter-linter`](skills/obsidian/frontmatter-linter/SKILL.md) | Validate frontmatter across all vault note types (daily notes, wiki pages, raw sources, kanbans). Detects broken `[[wikilinks]]`, orphan pages, stale content, and cross-system inconsistencies. |
@@ -25,6 +28,7 @@ All skills interact with the vault exclusively through the **Obsidian MCP Server
 |---|---|---|
 | [Obsidian MCP Server](https://github.com/nickolay/obsidian-mcp) | All skills | All vault read/write operations — no hardcoded paths. |
 | [Obsidian Git Plugin](https://github.com/denolehov/obsidian-git) | `vault-git-sync` | Auto-commit, auto-push, and manual sync operations. The skill stages and commits via bash `git` but relies on this plugin for the push/sync pipeline. |
+| Exa Web Search API (via MCP tools) | `quick-research`, `source-ingest`, `deep-research` | Web search and content fetching for research workflows. Requires `exa_web_search_exa` and `exa_web_fetch_exa` tools. |
 
 ### Design Principle: MCP-First
 
