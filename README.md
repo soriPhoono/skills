@@ -6,16 +6,16 @@ Built for use with the [Agent Skills](https://agentskills.io) ecosystem — inst
 
 ## Skills
 
-Organized in a catalog layout: `skills/<category>/<name>/SKILL.md`
+All skills reside under `skills/obsidian/` — one level deep for the CLI's flat discovery.
 
-| Category | Skill | Description |
-|---|---|---|
-| **daily** | [`session-logger`](skills/daily/session-logger/SKILL.md) | Append structured worklog entries to today's daily note during a work session — project, tasks, files changed, status. |
-| **daily** | [`daily-note-manager`](skills/daily/daily-note-manager/SKILL.md) | Create today's daily note from template, review yesterday's for completeness, validate section ordering. |
-| **health** | [`frontmatter-linter`](skills/health/frontmatter-linter/SKILL.md) | Validate frontmatter across all vault note types (daily notes, wiki pages, raw sources, kanbans). Detects broken `[[wikilinks]]`, orphan pages, stale content, and cross-system inconsistencies. |
-| **health** | [`tag-sanitizer`](skills/health/tag-sanitizer/SKILL.md) | Audit all vault tags: find near-duplicates, singletons, non-kebab-case tags. Propose and execute merges. |
-| **wiki** | [`wiki-index-regenerator`](skills/wiki/wiki-index-regenerator/SKILL.md) | Rebuild `LLM-Wiki/wiki/index.md` from the actual filesystem — refresh topic tables, page counts, and statistics. |
-| **infra** | [`vault-git-sync`](skills/infra/vault-git-sync/SKILL.md) | Stage grouped changes by vault area (daily/, wiki/, raw/, config/) and commit with conventional messages. |
+| Skill | Description |
+|---|---|
+| [`session-logger`](skills/obsidian/session-logger/SKILL.md) | Append structured worklog entries to today's daily note during a work session — project, tasks, files changed, status. |
+| [`daily-note-manager`](skills/obsidian/daily-note-manager/SKILL.md) | Create today's daily note from template, review yesterday's for completeness, validate section ordering. |
+| [`frontmatter-linter`](skills/obsidian/frontmatter-linter/SKILL.md) | Validate frontmatter across all vault note types (daily notes, wiki pages, raw sources, kanbans). Detects broken `[[wikilinks]]`, orphan pages, stale content, and cross-system inconsistencies. |
+| [`tag-sanitizer`](skills/obsidian/tag-sanitizer/SKILL.md) | Audit all vault tags: find near-duplicates, singletons, non-kebab-case tags. Propose and execute merges. |
+| [`wiki-index-regenerator`](skills/obsidian/wiki-index-regenerator/SKILL.md) | Rebuild `LLM-Wiki/wiki/index.md` from the actual filesystem — refresh topic tables, page counts, and statistics. |
+| [`vault-git-sync`](skills/obsidian/vault-git-sync/SKILL.md) | Stage grouped changes by vault area (daily/, wiki/, raw/, config/) and commit with conventional messages. |
 
 ## Dependencies
 
