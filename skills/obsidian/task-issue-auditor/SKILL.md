@@ -7,7 +7,7 @@ description: Audit the vault to ensure every completed or in-progress task in th
 
 Audit the task-to-issue traceability chain across the vault. Reads the daily note, scans every project section for completed and in-progress tasks, cross-references each against the project's `Issues/` directory, and validates that existing issue files are up-to-date with the daily note's worklog content.
 
-This skill enforces the traceability contract defined in `Projects/AGENTS.md` and the `session-logger` skill: every kanban task in the daily note should have a corresponding issue write-up, and the issue file should accurately reflect the worklog state.
+This skill enforces the traceability contract defined in the obsidian vault in `Projects/AGENTS.md` and the `session-logger` skill: every kanban task in the daily note should have a corresponding issue write-up, and the issue file should accurately reflect the worklog state.
 
 ## When to Use
 
