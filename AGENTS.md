@@ -37,7 +37,7 @@ skills/
   - `feat(skills):` — new skill
   - `docs(skills):` — documentation or SKILL.md updates
   - `fix(skills):` — bug fixes in skill instructions
-- **Skills registry:** After adding a new skill here, it must be registered in `github:soriPhoono/nixos` at `nix/homes/sphoono/configs/agentics/agents/skills.nix`, then deployed via `nh os switch .`.
+- **Skills registry:** After adding a new skill here, it must be registered in `github:soriPhoono/homelab` at `nix/homes/sphoono/configs/agentics/agents/skills.nix`, then deployed via `nh os switch .`.
 
 ## Skill Format (SKILL.md)
 
@@ -64,7 +64,7 @@ The SKILL.md contains:
 | Repo | Vault Project | Vault Path |
 |---|---|---|
 | `github:soriPhoono/skills` | **Agentics** (Skills) | `Projects/Agentics/` |
-| `github:soriPhoono/nixos` | Homelab | `Projects/Homelab/` |
+| `github:soriPhoono/homelab` | Homelab | `Projects/Homelab/` |
 | `github:soriPhoono/guenivir` | Guenivir | `Projects/Guenivir/` |
 
 Skills are developed in this repo, registered in the Homelab repo's Nix config, and consumed by agents working in the Obsidian vault.
@@ -72,7 +72,7 @@ Skills are developed in this repo, registered in the Homelab repo's Nix config, 
 ## Key Dependencies
 
 - **Obsidian vault** (`~/Nextcloud/Notes/`) — the target environment for Obsidian category skills
-- **Homelab repo** (`github:soriPhoono/nixos`) — skills registry that consumes these definitions
+- **Homelab repo** (`github:soriPhoono/homelab`) — skills registry that consumes these definitions
 - **Nix flake input** — the skills repo is added as a flake input to the Homelab repo
 
 ## Gotchas
