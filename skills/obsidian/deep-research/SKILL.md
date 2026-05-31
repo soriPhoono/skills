@@ -139,7 +139,7 @@ For each fetched source, create a raw source bookmark via `obsidian_write_note`:
 **Frontmatter:**
 ```yaml
 ---
-type: article | repo
+type: article | paper | repo | data | image
 url: <URL>
 title: "<Title>"
 author: "<Author>"
@@ -177,6 +177,7 @@ entities:
 created: <today>
 updated: <today>
 confidence: high
+status: draft
 ---
 ```
 
@@ -444,11 +445,11 @@ All templates follow the LLM Wiki standard conventions. Key formats used through
 ### Page Types & Required Frontmatter
 
 | Type | Required Fields |
-|---|---|
+|---|---|---|
 | `concept` | `title`, `type: concept`, `sources` (array), `related` (array), `created`, `updated`, `confidence`, `status` |
-| `entity` | `title`, `type: entity`, `sources` (array), `related` (array), `created`, `updated`, `confidence` |
-| `source-summary` | `title`, `type: source-summary`, `source_url`, `source_file`, `author`, `date_published`, `date_ingested`, `concepts` (array), `entities` (array), `created`, `updated`, `confidence` |
-| `comparison` | `title`, `type: comparison`, `sources` (array), `related` (array), `created`, `updated`, `confidence` |
+| `entity` | `title`, `type: entity`, `sources` (array), `related` (array), `created`, `updated`, `confidence`, `status` |
+| `source-summary` | `title`, `type: source-summary`, `source_url`, `source_file`, `author`, `date_published`, `date_ingested`, `concepts` (array), `entities` (array), `created`, `updated`, `confidence`, `status` |
+| `comparison` | `title`, `type: comparison`, `sources` (array), `related` (array), `created`, `updated`, `confidence`, `status` |
 
 ### Raw Source Types
 
