@@ -7,13 +7,21 @@ description: Lightweight research workflow for the LLM Wiki. Given a topic, sear
 
 Lightweight, single-pass research for the LLM Wiki. Given a topic, the skill searches the web, creates source bookmarks in `raw/`, writes a structured source summary and concept page in `wiki/`, and updates the master index and operation log.
 
-For deeper two-level research (category + topic), see the `deep-research` skill.
+**Before activating this skill**, search the wiki thoroughly (see [Step 1](#step-1-determine-state)). If the wiki already covers the topic, no research is needed.
 
-## When to Use
+## When to Use — vs `deep-research`
 
-- **Quick lookup:** "research X", "what is X", "look up X"
-- **Single topic:** one concept, tool, or technology (not a whole category)
-- **Before deep-dive:** scouting a topic before deciding to do full `deep-research`
+| Use Case | Tool |
+|---|---|
+| **Simple "what is X?"** — one tool, one concept, no category context needed | ✅ `quick-research` |
+| **Bounded topic** — e.g., "How does k0s control plane work?" as a single concept | ✅ `quick-research` |
+| **Scouting** — exploring a topic before deciding if full research is warranted | ✅ `quick-research` |
+| **Category + sub-topic** — e.g., researching `kubernetes/k3s` with category context and comparisons | ❌ Use `deep-research` |
+| **Connected topic** — new topic that cross-references heavily with existing wiki topics | ❌ Use `deep-research` |
+| **Entity pages or comparisons needed** — the topic is a project/organization or needs comparison with peers | ❌ Use `deep-research` |
+| **Single URL to ingest** — you have a specific URL, not a topic | ❌ Use `source-ingest` |
+
+**Quick rule of thumb:** If you only need a concept page + source summaries (no entities, no comparisons, no category-level infrastructure), use `quick-research`. If you need the full two-level treatment with cross-references, use `deep-research`.
 
 ## Input
 
@@ -25,17 +33,28 @@ If the topic has multiple words, convert to kebab-case for file paths: `Containe
 
 ## Workflow
 
-### Step 1: Determine State
+### Step 1: Determine State — Search the Wiki First
 
-Check what already exists in the vault for this topic:
+**Before doing any external research, exhaust the wiki.** The information may already exist. Run ALL of these checks:
 
-1. **Search for existing pages:** Use `obsidian_search_notes` with `{{topic}}` to find any existing notes
-2. **Check raw/ sources:** Use `obsidian_search_notes` with query like `raw/{{topic}}` or walk `LLM-Wiki/raw/` via `obsidian_list_directory`
-3. **Check wiki pages:** Use `obsidian_search_notes` with `wiki/concepts/{{topic}}` or `wiki/sources/{{topic}}`
+1. **Read the index:** `obsidian_read_note("LLM-Wiki/wiki/index.md")` — check if `{{topic}}` appears in any topic table
+2. **Search vault-wide with multiple keyword variations:**
+   - `obsidian_search_notes("{{topic}}")` — exact topic name
+   - `obsidian_search_notes("{{topic}}", searchContent: true)` — broader content match
+   - Try synonyms or related terms if initial searches return nothing
+3. **Walk topic directories:**
+   - `obsidian_list_directory("LLM-Wiki/raw/")` — check which categories exist
+   - `obsidian_list_directory("LLM-Wiki/wiki/concepts/")` — look for a matching concept folder
+   - `obsidian_list_directory("LLM-Wiki/wiki/sources/")` — check for existing source summaries
+4. **If you find candidate pages, read them:** `obsidian_read_note` on each to assess whether they already cover what you need
 
-If the top-level category is ambiguous, ask the user: "Which category does `{{topic}}` belong to?" (e.g., `kubernetes`, `containerd`, `gitops`, `docker`).
+**If the wiki already has sufficient coverage**, skip research entirely and report what exists — no need to re-research.
 
-If the topic already has wiki pages, skip research and report what exists — no need to re-research.
+**If the topic does not exist** but is a simple, well-bounded concept, proceed with this `quick-research` workflow.
+
+**If the topic is actually a broad category** (e.g., "research Kubernetes networking" — spans many sub-topics, needs comparisons and entities), stop and use `deep-research` instead. See the decision table in [When to Use](#when-to-use---vs-deep-research).
+
+If the top-level category is ambiguous after searching, ask the user: "Which category does `{{topic}}` belong to?" (e.g., `kubernetes`, `containerd`, `gitops`, `docker`).
 
 ### Step 2: Research the Topic
 
@@ -70,7 +89,7 @@ For each fetched source, create a raw source bookmark via `obsidian_write_note`:
 **Frontmatter:**
 ```yaml
 ---
-type: article
+type: article | repo | paper | data | image
 url: <source URL>
 title: "<Source Title>"
 author: <Author or Organization>
@@ -85,7 +104,12 @@ tags: [{{category}}, {{topic}}]
 > Curator's note: <1-2 sentences summarizing the source's relevance and content>
 ```
 
-If the source is a GitHub repo instead of an article, use `type: repo` and place in `repos/` instead of `articles/`.
+**Type directory placement:** Place the bookmark in the type subdirectory matching its `type:` field:
+- `type: article` → `raw/<category>/articles/`
+- `type: repo` → `raw/<category>/repos/`
+- `type: paper` → `raw/<category>/papers/`
+- `type: data` → `raw/<category>/data/`
+- `type: image` → `raw/<category>/images/`
 
 ### Step 5: Create Source Summary
 
@@ -99,7 +123,7 @@ Create a source summary in `wiki/` via `obsidian_write_note`:
 title: "<Source Title>"
 type: source-summary
 source_url: <URL>
-source_file: LLM-Wiki/raw/{{category}}/articles/<filename>.md
+source_file: LLM-Wiki/raw/{{category}}/<type>/<filename>.md
 author: <Author>
 date_published: YYYY-MM-DD
 date_ingested: <today>
@@ -109,6 +133,7 @@ entities: []
 created: <today>
 updated: <today>
 confidence: high
+status: draft
 ---
 ```
 
@@ -235,9 +260,10 @@ Show a clean summary:
 2. <brief highlight>
 
 ### Next Steps
-- Ask `deep-research` to expand with category context
 - Run `frontmatter-linter` to validate the new pages
+- Run `organize-raw-sources` to audit source placement
 - Run `wiki-index-regenerator` to rebuild the full index
+- If the topic turns out to be broader than expected, run `deep-research` to expand with full category infrastructure, entities, and comparisons
 ```
 
 ## Templates Reference
@@ -247,7 +273,7 @@ Embedded here for portability (these match the LLM Wiki standard conventions):
 ### Raw Source Bookmark
 ```yaml
 ---
-type: article | repo | paper
+type: article | repo | paper | data | image
 url: <URL>
 title: "<Title>"
 author: <Author>
@@ -273,6 +299,7 @@ entities: []
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
 confidence: high | medium | low
+status: draft | reviewed | stale
 ---
 ```
 
@@ -300,3 +327,6 @@ status: draft | reviewed | stale
 - **Category doesn't exist** → create it automatically (raw/ topic dirs + wiki topic dirs)
 - **Topic with spaces** → kebab-case for paths, Title Case for page titles: `container runtime interface` → paths: `container-runtime-interface`, title: "Container Runtime Interface"
 - **User provides a URL instead of a topic** → delegate to `source-ingest` skill
+- **Wiki already covers the topic thoroughly** → do not research; report what exists and continue the task
+- **Wiki has partial coverage** → run `quick-research` to fill specific gaps rather than re-researching the whole topic; check which sub-topics are missing and target only those
+- **Topic discovered mid-research to be broader than expected** (e.g., "CRI" turns out to span Kubernetes and containerd) → stop `quick-research` and hand off to `deep-research` for the full two-level treatment

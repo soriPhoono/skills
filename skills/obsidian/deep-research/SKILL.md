@@ -7,19 +7,38 @@ description: Self-triggering deep research for the LLM Wiki. Activates when the 
 
 Full two-level research for the LLM Wiki: given a broad `{{category}}` and a specific `{{topic}}`, researches both, creates infrastructure if needed, builds all page types (concept, entity, source summaries, comparisons), writes cross-references across the knowledge graph, and updates the master index and operation log. This skill is **self-triggering** — it activates automatically when the agent detects a knowledge gap in the Obsidian vault during task execution, not only when explicitly called.
 
-For ingesting a single URL, see `source-ingest`.
+**Before activating this skill**, search the wiki thoroughly (see [Detection Mechanism](#detection-mechanism)). Full deep research is heavyweight — many gaps can be filled with lighter tools first:
+
+| If you need... | Use... |
+|---|---|
+| A single URL ingested | `source-ingest` |
+| A lightweight single-topic lookup ("what is X?") | `quick-research` |
+| Two-level research (category + topic + comparisons) | `deep-research` (this skill) |
 
 ## Trigger — Knowledge Gap Detection
 
 This skill must be used when, during any task, the agent searches the LLM Wiki in the Obsidian vault and finds insufficient information about a concept, tool, technology, or domain. It is the primary research workflow for filling gaps between what the vault knows and what the agent needs.
 
-### Detection Mechanism
+### Detection Mechanism — Always Search the Wiki First
 
-When the agent requires information to complete a task:
+**Before running any research, you MUST thoroughly search the wiki.** The wiki may already contain the information you need, making external research unnecessary.
 
-1. **Consult the LLM Wiki first** — Search the index (`LLM-Wiki/wiki/index.md`) and relevant topic areas using `obsidian_search_notes` with the target topic as query; also check `obsidian_list_directory` on `LLM-Wiki/wiki/concepts/` for relevant topic directories
-2. **Evaluate coverage** — Assess whether existing wiki pages adequately cover what you need: do they answer the question at hand? Are they detailed enough? Are sources recent?
-3. **Trigger conditions** — If any of the following are true, proceed with the deep research workflow:
+1. **Consult the LLM Wiki thoroughly** — Do NOT skip this step:
+   - Search the index: `obsidian_read_note("LLM-Wiki/wiki/index.md")` — check if the topic appears in any topic table
+   - Search vault-wide: `obsidian_search_notes` with the target topic as query (try multiple keyword variations)
+   - Walk topic directories: `obsidian_list_directory("LLM-Wiki/wiki/concepts/")` and drill into any folder that might contain the topic
+   - Check source summaries: `obsidian_list_directory("LLM-Wiki/wiki/sources/")` for the relevant category
+   - Read relevant pages: if you find candidate pages, read them with `obsidian_read_note` to assess depth
+2. **Evaluate coverage** — Assess whether existing wiki pages adequately cover what you need:
+   - Do they answer the specific question at hand?
+   - Are they detailed enough for the task?
+   - Are sources recent (check `updated` and `confidence` frontmatter)?
+3. **Decide which tool (if any) is appropriate** based on what you found:
+   - **Coverage sufficient** → Continue task, no research needed. You're done.
+   - **Single URL would plug the gap** → Use `source-ingest` instead — lighter and faster.
+   - **Simple single-topic gap** (one tool, one concept, no category context needed) → Use `quick-research` instead — creates concept page + summaries without the full two-level overhead.
+   - **Category-level or two-level gap** (needs category infrastructure, entity pages, comparisons) → Proceed with `deep-research` below.
+4. **Trigger conditions** — Only proceed with deep research if the gap matches one of these patterns:
 
    | Condition | Description | Action |
    |---|---|---|
@@ -33,35 +52,46 @@ When the agent requires information to complete a task:
 ```
 Agent encounters knowledge gap during task execution
     ↓
-Agent searches LLM Wiki (obsidian_search_notes, obsidian_read_note on index.md)
+Agent searches LLM Wiki thoroughly (index.md + search_notes + list_directory)
     ↓
 ┌─ Coverage exists and is sufficient? ──→ Continue task (no research needed)
-└─ Coverage insufficient (one of the 4 conditions above)?
+└─ Coverage insufficient?
          ↓
-    Extract {{category}} and {{topic}} from the search context
-         ↓
-    Invoke this deep-research workflow from Step 1
-         ↓
-    Return results; agent resumes original task with enriched knowledge
+    ┌─ Single URL would fill the gap? ──→ Use `source-ingest`
+    ├─ Simple single-topic gap? ──→ Use `quick-research`
+    └─ Category-level or two-level gap?
+              ↓
+         Extract {{category}} and {{topic}} from the search context
+              ↓
+         Invoke this deep-research workflow from Step 1
+              ↓
+         Return results; agent resumes original task with enriched knowledge
 ```
 
-### When NOT to Trigger
+### When NOT to Trigger — Use a Lighter Tool Instead
 
-- The wiki already has comprehensive, up-to-date coverage of the topic
-- The information is simple enough to answer from the agent's general knowledge (e.g., common programming language syntax)
-- The user explicitly instructs you not to research the topic
-- A single URL would provide the answer — use `source-ingest` instead
-- The question is about the user's own codebase or project (not a general concept)
+Deep research is the heaviest research tool. Consider these lighter alternatives first:
+
+- **The wiki already has comprehensive, up-to-date coverage** of the topic → continue the task, no research needed
+- **The topic is a simple, well-bounded single concept** (one tool, one project, one technology) → use `quick-research` instead — it creates only a concept page + source summaries without the full two-level category infrastructure
+- **A single URL would provide the answer** → use `source-ingest` instead
+- **The information is simple enough to answer from general knowledge** (e.g., common programming language syntax) → no wiki writes needed
+- **The question is about the user's own codebase or project** (not a general concept) → no wiki writes needed
+- **The user explicitly instructs you not to research the topic** → stop
+
+**Decision guideline:** If the knowledge gap is about a single, isolated concept with no need for category-level context pages, entity pages, or comparisons, use `quick-research`. Deep research is for topics that span a category (e.g., `containerd` as a whole) or need the full two-level treatment (category + specific sub-topic with cross-references).
 
 ### Example Trigger Scenarios
 
-| Agent Task | Wiki Search Result | Trigger? | Research Action |
-|---|---|---|---|
-| "Explain how k3s differs from k8s" | No results for k3s | ✅ No coverage | Create `kubernetes/k3s` topic |
-| "What is CRI-O and how does it relate to containerd?" | Concept page for containerd exists but no CRI-O page | ✅ Connected topic | Create `kubernetes/cri-o` with cross-links to containerd |
-| "Write a Terraform module that uses the Kubernetes provider" | Kubernetes concept page is thorough, Terraform page exists | ❌ Sufficient | Continue task |
-| "How does runc work internally?" | containerd topic exists but runc is only mentioned in passing | ✅ Insufficient depth | Create `containerd/runc` enrichment |
-| "What's new in Docker Compose v2?" | Docker Compose page dates from 2023 with confidence:low | ✅ Stale content | Refresh docker-compose topic |
+| Agent Task | Wiki Search Result | Tool Decision | Action |
+|---|---|---|---|---|
+| "Explain how k3s differs from k8s" | No results for k3s | `deep-research` (category + sub-topic) | Create `kubernetes/k3s` topic with full infrastructure |
+| "What is CRI-O and how does it relate to containerd?" | Concept page for containerd exists but no CRI-O page | `deep-research` (connected topic needs cross-refs) | Create `kubernetes/cri-o` with cross-links to containerd |
+| "Tell me about Netbird — what is it?" | No results for Netbird | `quick-research` (simple single-topic lookup) | Create concept + source summary for `netbird` |
+| "How does the k0s control plane work?" | k0s mentioned in Kubernetes concept but no dedicated page | `quick-research` (bounded topic, one concept) | Create concept page + sources for `k0s-control-plane` |
+| "Write a Terraform module that uses the Kubernetes provider" | Kubernetes concept page is thorough, Terraform page exists | ❌ Sufficient | Continue task — no research needed |
+| "How does runc work internally?" | containerd topic exists but runc is only mentioned in passing | `deep-research` (enrichment within category) | Create `containerd/runc` enrichment |
+| "What's new in Docker Compose v2?" | Docker Compose page dates from 2023 with confidence:low | `quick-research` (focused on one topic) | Refresh docker-compose concepts and sources |
 
 ## Inputs
 
@@ -79,13 +109,23 @@ If only one can be confidently inferred, derive the other:
 
 ## Workflow
 
-### Step 1: Determine State
+### Step 1: Determine State — Thoroughly Search the Wiki
 
-Check what already exists in the wiki:
+**Before doing any external research, exhaust the wiki.** The information you need may already exist. Run ALL of these checks:
 
-1. **Check category infrastructure:** Use `obsidian_list_directory` on `LLM-Wiki/raw/`, `LLM-Wiki/wiki/concepts/`, `LLM-Wiki/wiki/sources/` to see if `{{category}}` subdirectories exist
-2. **Read the index:** `obsidian_read_note` on `LLM-Wiki/wiki/index.md` to check if `{{category}}` appears in topic tables
-3. **Search for topic pages:** `obsidian_search_notes` with `{{topic}}` to find any existing notes
+1. **Read the index:** `obsidian_read_note("LLM-Wiki/wiki/index.md")` — check if `{{category}}` or `{{topic}}` appears in any topic table (Concepts, Entities, Sources, Comparisons)
+2. **Search vault-wide with multiple keyword variations:**
+   - `obsidian_search_notes("{{topic}}")` — exact topic name
+   - `obsidian_search_notes("{{topic}}", searchContent: true)` — broader content match
+   - `obsidian_search_notes("{{category}}")` — broader category match
+   - Try synonyms or related terms if initial searches return nothing
+3. **Walk topic directories:**
+   - `obsidian_list_directory("LLM-Wiki/raw/")` — check if `{{category}}` exists as a raw/ topic
+   - `obsidian_list_directory("LLM-Wiki/wiki/concepts/")` — check for concept pages
+   - `obsidian_list_directory("LLM-Wiki/wiki/sources/")` — check for source summaries
+   - `obsidian_list_directory("LLM-Wiki/wiki/entities/")` — check for entity pages
+   - `obsidian_list_directory("LLM-Wiki/wiki/comparisons/")` — check for comparisons
+4. **If you find any candidate pages, read them:** `obsidian_read_note` on each to assess whether they already cover what you need
 
 Record the state:
 - **New category, new topic** — neither exists anywhere
@@ -433,7 +473,10 @@ Search for existing pages in other topics that should link back to the new pages
 1. <Architectural insight>
 2. <Connection discovered>
 
-Shall I run frontmatter-linter on the new pages?
+### Next Steps
+- Run `frontmatter-linter` to validate the new pages
+- Run `organize-raw-sources` to audit source placement
+- Run `wiki-index-regenerator` to rebuild the full index
 ```
 
 Wait for user confirmation before taking further action.
