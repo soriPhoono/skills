@@ -13,7 +13,7 @@ Appends structured entries to today's daily note `## Worklog` section as work pr
 - **During a session:** "add a task", "I finished Y", "mark Z as done"
 - **After making changes:** "I changed these files", "update the worklog"
 - **Cross-project notification:** "add a todo for Project B about updating the deployment config"
-- **End of session:** "log what I did today", "close out my session"
+- **End of session:** "log what I did today", "close out my session" — triggers the session close-out sequence (final log entry → `task-issue-auditor` → `vault-git-sync`)
 - **Creating an issue:** "create an issue for this task", "track this work as an issue", "write up this investigation"
 
 This skill is designed to be called **repeatedly** during a work session — each call appends to the growing worklog. When a task involves significant investigation (especially cross-project work or research-backed tasks), it also creates a durable issue file in the project's `Issues/` directory for auditability.
@@ -483,6 +483,16 @@ The agent should:
 3. Optionally move it to the In Progress column on the kanban board
 4. Track it in the worklog when work begins
 
+### Session Close-Out
+
+At the end of every work session, the agent should run the full close-out sequence:
+
+1. **Final worklog entry** via `session-logger` — wrap-up summary of what was accomplished
+2. **Task-issue audit** via `task-issue-auditor` — verifies every completed task has an issue file and existing files are up-to-date
+3. **Vault git sync** via `vault-git-sync` — commit all changes with conventional commit messages
+
+This ensures the traceability chain is maintained: daily note tracks when work happened, issue files track what work was done and why.
+
 ### Acknowledging a Cross-Project Notification
 
 When a cross-project ping has been picked up and acted upon, mark it in the daily note:
@@ -493,6 +503,7 @@ When a cross-project ping has been picked up and acted upon, mark it in the dail
    **Acknowledged by:** `Project B` agent · ✅ 2026-05-30
    ```
 3. When the originating agent scans the daily note in a future session, they'll see the completion and know the notification was handled.
+4. Run `task-issue-auditor` at session close-out to ensure the issue file status reflects the resolution.
 
 ---
 
@@ -550,7 +561,11 @@ Every issue file **must** have a `daily_note` frontmatter field linking back to 
 - **Cross-project notification to a project with no section yet** → create the section under `## Worklog` (same as creating a new project section, but with the notification format)
 - **Cross-project notification to a project that already has a section** → append under the existing section, after the last `####` heading
 - **Multiple cross-project notifications in one session** → each goes under the appropriate target section; if the same target receives multiple pings, all are grouped under its existing section
-- **User says "that's all for today"** → optionally suggest running `vault-git-sync`
+- **User says "that's all for today"** → trigger the session close-out sequence:
+  1. Run `session-logger` for the final wrap-up entry (completion summary, overall progress)
+  2. Run `task-issue-auditor` on today's daily note to audit task-to-issue traceability
+  3. Present the audit report and offer auto-fixes for missing/stale issue files
+  4. After fixes, suggest running `vault-git-sync` to commit all changes
 - **Cross-project notification for a project that doesn't have a kanban board yet** → skip the `📋` kanban link and add a note: "Create kanban board at `Projects/<Project>.md`"
 - **Acknowledging a cross-project notification from the target side** → update the checklist item from `[ ]` to `[x]` with `✅ YYYY-MM-DD`; add `**Acknowledged by:**` line to the task body; if an issue file exists, update its status to `resolved` and add a resolution note
 - **Ambiguous project name** → ask the user to clarify which vault project they mean; check the workspace AGENTS.md or vault conventions for the project-to-repo mapping
