@@ -1,6 +1,6 @@
 ---
 name: session-logger
-description: Append structured worklog entries to today's daily note during an active work session. Logs project tasks, narrative descriptions, files changed, and task status in the format defined by Daily/AGENTS.md.
+description: Append structured worklog entries to today's daily note during an active work session. Logs project tasks, narrative descriptions, files changed, and task status in the format defined by Daily/AGENTS.md. For in-depth task work, creates issue summary files in Projects/<project>/Issues/ with traceability back to daily note entries and LLM Wiki research pages.
 ---
 
 # Session Logger
@@ -14,8 +14,9 @@ Appends structured entries to today's daily note `## Worklog` section as work pr
 - **After making changes:** "I changed these files", "update the worklog"
 - **Cross-project notification:** "add a todo for Project B about updating the deployment config"
 - **End of session:** "log what I did today", "close out my session"
+- **Creating an issue:** "create an issue for this task", "track this work as an issue", "write up this investigation"
 
-This skill is designed to be called **repeatedly** during a work session — each call appends to the growing worklog.
+This skill is designed to be called **repeatedly** during a work session — each call appends to the growing worklog. When a task involves significant investigation (especially cross-project work or research-backed tasks), it also creates a durable issue file in the project's `Issues/` directory for auditability.
 
 ---
 
@@ -77,13 +78,15 @@ Use today's actual date. Format as `YYYY-MM-DD` for the daily note filename.
 Parse the user's request to extract:
 
 | Input | Description | Example |
-|---|---|---|
+|---|---|---|---|
 | `{{project}}` | Current project — the one you're actively working on | `project-a`, `project-b`, `my-project` |
 | `{{target_project}}` | **Optional.** Target project for cross-project notifications. If set and **different** from `{{project}}`, the entry goes under the target's section, not the current project's. Defaults to `{{project}}` (same-project entry). | `project-b`, `project-a` |
 | `{{task}}` | Description of what was done or what needs to be done | `Deploy control plane to production` |
 | `{{status}}` | Task state | `in-progress`, `done`, `blocked` |
 | `{{files}}` | Optional list of changed files with summaries | `repo/path/to/config.yml — added service definition` |
 | `{{details}}` | Optional free-form narrative | `Troubleshoot cluster join timeout...` |
+| `{{create_issue}}` | **Optional.** Whether to create an issue write-up file in `Projects/<project>/Issues/`. Auto-triggered when the task originates from a cross-project notification. Can also be explicitly requested via "create an issue for this" or "track this as an issue". | `true`, `false` |
+| `{{wiki_pages}}` | **Optional.** List of LLM Wiki pages created during research for this task. Links the issue to the auditable research cache. | `["wiki/concepts/kubernetes/k0s/K0s-Control-Plane", "wiki/sources/kubernetes/k0sproject-architecture"]` |
 
 If the user provides a rich description, extract these fields from it. If any are missing, ask.
 
@@ -103,6 +106,13 @@ If the user provides a rich description, extract these fields from it. If any ar
 - `in-progress`, `wip`, `working`, `started` → pending task (`[ ]` with `📅 YYYY-MM-DD`)
 - `cancelled`, `wontfix` → skip (don't add to log)
 - For **cross-project notifications**, the status should always default to `in-progress` (pending) unless explicitly stated otherwise — the notification represents a new pending item for the target project.
+
+**`{{create_issue}}` auto-trigger logic:**
+- If the task is a cross-project notification (`{{target_project}}` ≠ `{{project}}`), set `create_issue: true` automatically — the notification represents a hand-off that should be tracked as an issue.
+- If the user says "create an issue", "track this", "write up an issue", or "file this as an issue" → set `create_issue: true`.
+- If the user says "quick note" or "just log it" → set `create_issue: false` (skip issue creation).
+- If `status` is `done` and this is a completion log (not a new task), default `create_issue: false` — the work is already complete.
+- For new tasks (`status: in-progress`, `started`, `wip`) with significant `{{details}}`, default `create_issue: true` — if there's enough narrative to warrant a write-up, create the issue file.
 
 ### Step 4: Locate or Create the Project Subsection
 
@@ -225,9 +235,134 @@ Use `obsidian_patch_note` to surgically insert content:
    > {{target_project}}.
 
    📋 [[Projects/{{target_project-kebab}}|{{target_project}} Kanban]]
-   ```
+    ```
 
-### Step 7: Update Summary
+### Step 7: Create Issue Summary File (if applicable)
+
+If `{{create_issue}}` is `true` AND the target project has an `Issues/` directory, create an issue write-up file to provide an auditable trail from task to implementation. This is the durable record of the work — distinct from the daily note entry (which is the temporal log).
+
+**Issue file naming:** Slugify the task name to kebab-case:
+
+| Task | Issue Filename |
+|---|---|
+| `Deploy control plane to production` | `deploy-control-plane-to-production.md` |
+| `Research k0s control plane architecture` | `research-k0s-control-plane-architecture.md` |
+| `[Ping from Project A] Update deployment config` | `update-deployment-config.md` (strip the ping prefix) |
+
+**Path:** `Projects/{{target_project}}/Issues/{{task-slug}}.md`
+
+**Step 7a: Check if issue already exists**
+
+Before creating, check if an issue file for this task already exists:
+
+1. Use `obsidian_search_notes` with the task slug as query, scoped to `Projects/{{target_project}}/Issues/`
+2. If a matching file exists, read it with `obsidian_read_note` and append new worklog content instead of overwriting
+3. If no file exists, proceed with creation
+
+**Step 7b: Determine issue status**
+
+| Worklog Status | Issue Status |
+|---|---|
+| `in-progress`, `started`, `wip` | `in-progress` |
+| `done`, `completed` | `resolved` |
+| `blocked` | `blocked` |
+
+**Step 7c: Build the issue frontmatter**
+
+```yaml
+---
+title: "{{task}}"
+type: issue
+project: "{{target_project}}"
+status: {{issue_status}}
+daily_note: "[[Daily/{{today}}|{{today}}]]"
+wiki_pages:
+{% for page in wiki_pages %}
+  - "[[{{page}}]]"
+{% endfor %}
+created: {{today}}
+updated: {{today}}
+---
+```
+
+**Frontmatter rules:**
+- `daily_note` — always set to today's daily note `[[wikilink]]`. This is the traceability anchor: every issue file links back to the daily note where work was logged, and the daily note's task links forward to the issue.
+- `wiki_pages` — optional. If `{{wiki_pages}}` was provided (research was done), list each page as a `[[wikilink]]`. This connects the issue to the auditable research cache in the LLM Wiki.
+- If the issue already existed and you're appending, update `updated: {{today}}` and merge any new `wiki_pages` entries without duplicating.
+
+**Step 7d: Build the issue content**
+
+```markdown
+## Summary
+
+{{task}}
+
+## Context
+
+{{details}}
+
+{% if files %}
+## Files Changed
+
+| File | Summary |
+|---|---|
+{% for file in files %}| `{{file.path}}` | {{file.summary}} |
+{% endfor %}{% endif %}
+
+## Daily Note Reference
+
+Tracked in [[Daily/{{today}}|{{today}}]] under `### Project: {{target_project}}`.
+
+{% if wiki_pages %}
+## LLM Wiki References
+
+Research conducted for this issue:
+{% for page in wiki_pages %}
+- [[{{page}}]]
+{% endfor %}{% endif %}
+```
+
+**For cross-project notifications specifically** (where `{{target_project}}` ≠ `{{project}}`), add an additional section noting the origin:
+
+```markdown
+## Origin
+
+This issue was created from a cross-project notification sent by the **{{project}}** project. See the notification in [[Daily/{{today}}|today's daily note]] under `### Project: {{target_project}}`.
+```
+
+**Step 7e: Write or append the issue file**
+
+- **New issue:** Use `obsidian_write_note` with the full frontmatter and content
+- **Existing issue (append mode):** Use `obsidian_read_note` to get current content, then use `obsidian_write_note` in `append` mode with a new worklog subsection:
+
+  ```markdown
+  ---
+
+  ### Worklog: {{today}}
+
+  {{details}}
+
+  {% if files %}
+  #### Files Changed
+
+  | File | Summary |
+  |---|---|
+  {% for file in files %}| `{{file.path}}` | {{file.summary}} |
+  {% endfor %}{% endif %}
+
+  → Daily note: [[Daily/{{today}}|{{today}}]]
+  ```
+
+Then also `obsidian_update_frontmatter` to update the `updated` date.
+
+**Step 7f: Verify the issue file**
+
+Read back the issue file with `obsidian_read_note` to confirm:
+- Frontmatter contains `daily_note: "[[Daily/{{today}}|...]]"` — traceability anchor is present
+- `project:` matches `{{target_project}}`
+- If `wiki_pages` was provided, they appear in the frontmatter
+
+### Step 8: Update Summary
 
 If this is the first worklog entry of the day, also update the `## Summary` section at the top of the note.
 
@@ -260,11 +395,23 @@ Working on {{project}}: {{task}} · Pending notification for {{target_project}}:
 
 If a summary already exists, append to it using the same pattern.
 
-### Step 8: Confirm
+### Step 9: Confirm
 
 Present a summary of what was logged:
 
-**Same-project entry:**
+**Same-project entry (with issue):**
+```
+Logged to Daily/2026-05-30.md:
+
+### Project: Project A
+- [x] Deploy control plane to production ✅ 2026-05-30
+
+## Summary updated: "Working on Project A: deploy control plane to production"
+
+📄 Issue created: Projects/Project A/Issues/deploy-control-plane-to-production.md
+```
+
+**Same-project entry (no issue):**
 ```
 Logged to Daily/2026-05-30.md:
 
@@ -274,7 +421,20 @@ Logged to Daily/2026-05-30.md:
 ## Summary updated: "Working on Project A: deploy control plane to production"
 ```
 
-**Cross-project notification:**
+**Cross-project notification (with issue):**
+```
+Logged cross-project notification to Daily/2026-05-30.md:
+
+### Project: Project B  ← target project section
+- [ ] 📩 [from: Project A] Update deployment config 📅 2026-05-30
+
+## Summary updated: "Working on Project A: ... · Pending notification for Project B: ..."
+
+➡️  Project B's agent will discover this item when it scans the daily note.
+📄 Issue created: Projects/Project B/Issues/update-deployment-config.md
+```
+
+**Cross-project notification (no issue):**
 ```
 Logged cross-project notification to Daily/2026-05-30.md:
 
@@ -338,7 +498,9 @@ When a cross-project ping has been picked up and acted upon, mark it in the dail
 
 ## Format Reference
 
-All output follows the format defined in `Daily/AGENTS.md`. Key rules:
+All output follows the format defined in `Daily/AGENTS.md` and `Projects/AGENTS.md`. Key rules:
+
+### Daily Note Conventions
 
 - `#### Tasks` section uses Tasks plugin format: `- [ ] task 📅 YYYY-MM-DD` or `- [x] task ✅ YYYY-MM-DD`
 - `#### Task: <name>` subsections contain narrative write-ups
@@ -347,6 +509,35 @@ All output follows the format defined in `Daily/AGENTS.md`. Key rules:
 - Project names must match kanban board filenames in `Projects/`
 - Cross-project notifications use the `📩` prefix in the `#### Tasks` checklist
 - Cross-project notification `#### Task:` headings use the format `[Ping from <source>] <task>`
+
+### Issue File Conventions (Projects/<Project>/Issues/<task-slug>.md)
+
+**Frontmatter fields:**
+
+| Field | Required | Description |
+|---|---|---|
+| `title` | Yes | The task description (same as the daily note task) |
+| `type` | Yes | Must be `issue` |
+| `project` | Yes | The project this issue belongs to (PascalCase) |
+| `status` | Yes | One of: `in-progress`, `resolved`, `blocked`, `cancelled` |
+| `daily_note` | Yes | `[[wikilink]]` to the daily note where work is tracked — this is the traceability anchor |
+| `wiki_pages` | No | Array of `[[wikilinks]]` to LLM Wiki pages created during research |
+| `created` | Yes | Date the issue was first created |
+| `updated` | Yes | Date of last update |
+
+**Traceability chain:**
+
+```
+Daily note task (Daily/YYYY-MM-DD.md)
+  │
+  ├──→ Issue file (Projects/Project/Issues/task-slug.md)
+  │       └── daily_note: [[Daily/YYYY-MM-DD]]  ← backlink to daily note
+  │
+  └──→ LLM Wiki pages (wiki/concepts/...)
+          └── referenced in issue's wiki_pages frontmatter
+```
+
+Every issue file **must** have a `daily_note` frontmatter field linking back to the daily note entry. This ensures the two-way traceability: the daily note records when work happened, the issue file records what work was done and why.
 
 ## Edge Cases
 
@@ -361,5 +552,12 @@ All output follows the format defined in `Daily/AGENTS.md`. Key rules:
 - **Multiple cross-project notifications in one session** → each goes under the appropriate target section; if the same target receives multiple pings, all are grouped under its existing section
 - **User says "that's all for today"** → optionally suggest running `vault-git-sync`
 - **Cross-project notification for a project that doesn't have a kanban board yet** → skip the `📋` kanban link and add a note: "Create kanban board at `Projects/<Project>.md`"
-- **Acknowledging a cross-project notification from the target side** → update the checklist item from `[ ]` to `[x]` with `✅ YYYY-MM-DD`; add `**Acknowledged by:**` line to the task body
+- **Acknowledging a cross-project notification from the target side** → update the checklist item from `[ ]` to `[x]` with `✅ YYYY-MM-DD`; add `**Acknowledged by:**` line to the task body; if an issue file exists, update its status to `resolved` and add a resolution note
 - **Ambiguous project name** → ask the user to clarify which vault project they mean; check the workspace AGENTS.md or vault conventions for the project-to-repo mapping
+- **Issue file already exists for this task** → append new worklog content to the existing file (don't overwrite); update the `updated` date in frontmatter
+- **Project has no Issues/ directory** → check if `Projects/<project>/Issues/` exists; if not, skip issue creation and log a note: "No Issues/ directory found for `{{project}}`. Create one with the `create-project` skill or manually."
+- **`{{create_issue}}` is true but the task is marked `done` with no details** → skip issue creation (nothing to write up); a one-line completion doesn't warrant a full issue file
+- **`{{create_issue}}` is true but the project doesn't exist in Projects/** → skip issue creation; log a note: "Project `{{project}}` doesn't exist yet. Create it with the `create-project` skill first."
+- **Appending to an existing issue with new wiki_pages** → merge new `wiki_pages` entries into the frontmatter array without duplicating existing ones; use `obsidian_update_frontmatter` with the merged array
+- **User says "close the issue" or "resolve the issue"** → update the issue file's `status` to `resolved`, update `updated` date, and mark the corresponding daily note task as done
+- **Multiple daily note entries for the same task** → each additional entry appends a new worklog subsection to the existing issue file (see Step 7e append mode)
