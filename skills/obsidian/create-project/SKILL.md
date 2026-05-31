@@ -19,10 +19,11 @@ For the full project system specification, read `Projects/AGENTS.md` in the vaul
 ## Input
 
 | Input | Description | Example |
-|---|---|---|
+|---|---|---|---|
 | `{{project_name}}` | The project's display name (PascalCase) | `Website`, `Monitoring`, `Data-Fortress` |
 | `{{description}}` | Optional. One-paragraph project purpose | "Monorepo for the team website and blog" |
 | `{{github_url}}` | Optional. Link to the GitHub repository | `https://github.com/soriPhoono/website` |
+| `{{architecture_notes}}` | Optional. Architecture overview, key files, tech stack notes (goes in About.md ## Architecture section) | "Flux CD with SSH bootstrap, k0s runtime, NetBird VPN" |
 | `{{initial_goals}}` | Optional. List of Backlog items to seed the kanban | `["Design landing page", "Set up CI/CD", "Write docs"]` |
 
 If `{{project_name}}` is provided in a different format (kebab-case, space-separated), convert it:
@@ -48,18 +49,22 @@ If any of the optional inputs are missing, ask the user:
 
 - **`{{description}}`**: "What is the purpose of this project? (1-2 sentences)"
 - **`{{github_url}}`**: "Is there a GitHub repository for this project? (optional)"
+- **`{{architecture_notes}}`**: "Any architecture notes or key files to document? (optional — can be added later)"
 - **`{{initial_goals}}`**: "Any initial goals or tasks to seed the Backlog? (optional, comma-separated list)"
 
 If the user doesn't provide optional fields, leave sensible defaults:
-- No description → omit from About.md (use just the purpose heading)
+- No description → use "{{project_name}} project" as a minimal placeholder
 - No GitHub URL → omit the Repositories section
 - No initial goals → leave Backlog empty
+- No architecture notes → omit the Architecture section from About.md
 
 ### Step 3: Create the Project Directory
 
 Create the directory structure. `obsidian_write_note` auto-creates parent paths, so writing the first file will create the directory.
 
 **Create `Projects/{{project_name}}/About.md`:**
+
+Per `Projects/AGENTS.md`, the About.md should contain "project description, architecture notes, and GitHub link." Create the file with as many of these as the user has provided:
 
 ```markdown
 ---
@@ -80,7 +85,15 @@ updated: {{today}}
 
 - **GitHub:** [{{github_url}}]({{github_url}})
 {% endif %}
+
+{% if architecture_notes %}
+## Architecture
+
+{{architecture_notes}}
+{% endif %}
 ```
+
+If the user provided architecture notes, include them. If not, omit the Architecture section — it can be added later as the project evolves (per `Projects/AGENTS.md`, About.md is "updated throughout sessions like the daily note").
 
 **Create `Projects/{{project_name}}/Project.md`:**
 
@@ -172,7 +185,9 @@ Projects/{{project_name}}/
 ### Next Steps
 
 - Add tasks to the kanban board's Backlog or In Progress columns
-- Reference the project in today's daily note: `📋 [[Projects/{{project_name}}/Project|{{project_name}} Kanban]]`
+- Reference the project in today's daily note: `📋 [[Projects/{{project_name}}/Project|{{display_name}} Kanban]]`
+  - Use a descriptive display name in the kanban link (e.g., "Guenivir Cluster Kanban", not just "Guenivir Kanban")
+- Tag daily note entries with the lowercase kebab-case version of the project name (e.g., `guenivir`, `llm-wiki`)
 - Run `session-logger` to log work against this project
 - If this project needs a GitHub repository synced, configure it separately
 ```
@@ -212,6 +227,16 @@ Projects/<Project-Name>/
 | `type` | Yes | Must be `issue-index` |
 | `project` | Yes | PascalCase project name matching the directory |
 
+### Naming Conventions (per Projects/AGENTS.md)
+
+| Convention | Rule | Example |
+|---|---|---|
+| **Directory names** | PascalCase matching the project name | `Guenivir`, `LLM-Wiki`, `My-Project` |
+| **About filenames** | Always `About.md` | `Projects/<Name>/About.md` |
+| **Kanban filenames** | Always `Project.md` | `Projects/<Name>/Project.md` |
+| **Display names** | Use full descriptive name in kanban links | "Guenivir Cluster Kanban", not "Guenivir Kanban" |
+| **Daily note tags** | Lowercase kebab-case of project name | `guenivir`, `llm-wiki`, `my-project` |
+
 ### Standard Kanban Columns
 
 | Column | Purpose |
@@ -234,12 +259,27 @@ Done                                         ### Project: X
                                               Narrative of what was done
 ```
 
+### Project Lifecycle (per Projects/AGENTS.md)
+
+Once created, a project follows this lifecycle:
+
+| Phase | Actions |
+|---|---|
+| **Starting a task** | Move kanban item to In Progress → create `#### Task:` in daily note → add narrative + files |
+| **Completing a task** | Move to Done → check off in daily note with `✅` → update Files Changed table |
+| **Blocked task** | Move to Blocked column → note blocker in daily note → link external references |
+| **Issue write-up** | For deep investigations, create `Issues/<title>.md` documenting problem → research → resolution |
+| **Session end** | Move completed items to Done → reschedule Backlog → commit with `feat(project):` |
+
 ## Edge Cases
 
 - **Project already exists** → open existing project, don't overwrite
-- **Project name with spaces** → convert to PascalCase directory: `My Project` → `My-Project`
+- **Project name with spaces or hyphens** → convert to PascalCase directory: `My Project` → `My-Project`, `my-project` → `My-Project`
 - **Project name starts with lowercase** → PascalCase: `homelab` → `Homelab`
-- **User provides a repo URL that's not GitHub** → still include it in About.md under Repositories section
+- **Project name contains special characters** → strip non-alphanumeric (except hyphens) for directory name; keep original in display name
+- **Hyphenated PascalCase** (e.g., `Data-Fortress`) → keep hyphens; directory name is `Data-Fortress`, tag is `data-fortress`
+- **User provides a repo URL that's not GitHub** → still include it in About.md under Repositories section, label with the correct provider
 - **User says "just set up the directory, I'll fill in details later"** → create with minimal About.md (title + purpose heading only) and empty kanban
 - **Accidental creation** → no undo; files must be manually deleted or moved
 - **User provides initial goals but they're too vague** → ask for clarification rather than adding ambiguous Backlog items
+- **User provides architecture notes that are too brief** → still include them; they can be expanded later (About.md is live-updated)
