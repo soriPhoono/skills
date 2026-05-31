@@ -13,7 +13,7 @@ Appends structured entries to today's daily note `## Worklog` section as work pr
 - **During a session:** "add a task", "I finished Y", "mark Z as done"
 - **After making changes:** "I changed these files", "update the worklog"
 - **Cross-project notification:** "add a todo for Project B about updating the deployment config"
-- **End of session:** "log what I did today", "close out my session" — triggers the session close-out sequence (final log entry → `task-issue-auditor` → `tag-sanitizer` + `frontmatter-linter` → `vault-git-sync`)
+- **End of session:** "log what I did today", "close out my session" — triggers the session close-out sequence (final log entry → `session-closeout` → `vault-git-sync`)
 - **Creating an issue:** "create an issue for this task", "track this work as an issue", "write up this investigation"
 
 This skill is designed to be called **repeatedly** during a work session — each call appends to the growing worklog. When a task involves significant investigation (especially cross-project work or research-backed tasks), it also creates a durable issue file in the project's `Issues/` directory for auditability.
@@ -488,13 +488,15 @@ The agent should:
 At the end of every work session, the agent should run the full close-out sequence:
 
 1. **Final worklog entry** via `session-logger` — wrap-up summary of what was accomplished
-2. **Task-issue audit** via `task-issue-auditor` — verifies every completed task has an issue file and existing files are up-to-date
-3. **Vault health checks** — run these in parallel (they're independent):
-   - `tag-sanitizer` — audit tags for near-duplicates, singletons, non-kebab-case violations, and orphan tags
-   - `frontmatter-linter` — validate frontmatter correctness, graph integrity, and stale content across all vault systems
-4. **Vault git sync** via `vault-git-sync` — commit all changes with conventional commit messages
+2. **Full vault health pipeline** via `session-closeout` — runs five checks in sequence:
+   - `task-issue-auditor` — audit task-to-issue traceability
+   - `frontmatter-linter` — validate frontmatter, graph integrity, stale content
+   - `tag-sanitizer` — audit tags for duplicates and violations
+   - `organize-raw-sources` — audit raw/ bookmark placement
+   - `wiki-index-regenerator` — rebuild the master index
+3. **Vault git sync** via `vault-git-sync` — commit all changes with conventional commit messages
 
-This ensures the traceability chain is maintained: daily note tracks when work happened, issue files track what work was done and why, and the vault remains healthy with clean tags and valid frontmatter.
+This ensures the traceability chain is maintained: daily note tracks when work happened, issue files track what work was done and why, and the vault remains healthy with clean tags, valid frontmatter, and an accurate index.
 
 ### Acknowledging a Cross-Project Notification
 
@@ -566,10 +568,8 @@ Every issue file **must** have a `daily_note` frontmatter field linking back to 
 - **Multiple cross-project notifications in one session** → each goes under the appropriate target section; if the same target receives multiple pings, all are grouped under its existing section
 - **User says "that's all for today"** → trigger the session close-out sequence:
   1. Run `session-logger` for the final wrap-up entry (completion summary, overall progress)
-  2. Run `task-issue-auditor` on today's daily note to audit task-to-issue traceability
-  3. Present the audit report and offer auto-fixes for missing/stale issue files
-  4. Run vault health checks (parallel): `tag-sanitizer` for tag hygiene and `frontmatter-linter` for schema integrity
-  5. After fixes, run `vault-git-sync` to commit all changes
+  2. Run `session-closeout` — the composite skill that orchestrates task-issue-auditor → frontmatter-linter → tag-sanitizer → organize-raw-sources → wiki-index-regenerator in sequence
+  3. After fixes, run `vault-git-sync` to commit all changes
 - **Cross-project notification for a project that doesn't have a kanban board yet** → skip the `📋` kanban link and add a note: "Create kanban board at `Projects/<Project>.md`"
 - **Acknowledging a cross-project notification from the target side** → update the checklist item from `[ ]` to `[x]` with `✅ YYYY-MM-DD`; add `**Acknowledged by:**` line to the task body; if an issue file exists, update its status to `resolved` and add a resolution note
 - **Ambiguous project name** → ask the user to clarify which vault project they mean; check the workspace AGENTS.md or vault conventions for the project-to-repo mapping

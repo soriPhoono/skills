@@ -23,7 +23,8 @@ skills/
 │   │   ├── source-ingest/
 │   │   ├── organize-raw-sources/
 │   │   ├── create-project/
-│   │   └── task-issue-auditor/
+│   │   ├── task-issue-auditor/
+│   │   └── session-closeout/
 │   └── ... (other skill categories)
 ├── nix/                         (optional) Nix packaging if skills need dependencies
 └── flake.nix                    (optional) Flake for Nix-consumable skill set
